@@ -9,7 +9,7 @@
     name="viewport"
     content="width=device-width, initial-scale=1.0">
 
-  <title>QR Attendance</title>
+  <title>QR Diagnostic Test</title>
 
   <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
 
@@ -21,33 +21,38 @@
 
     body {
       margin: 0;
-      padding: 20px;
+      padding: 15px;
       font-family: Arial, sans-serif;
       text-align: center;
-      background: #f5f5f5;
+      background: #f2f2f2;
     }
 
     h1 {
-      margin-bottom: 15px;
+      font-size: 24px;
     }
 
     #camera {
       width: 100%;
       max-width: 500px;
-      border-radius: 15px;
       background: black;
+      border-radius: 15px;
     }
 
     #status {
-      margin-top: 20px;
+      margin-top: 15px;
       padding: 15px;
       background: white;
       border-radius: 10px;
-      font-size: 18px;
-      word-break: break-word;
+      text-align: left;
+      font-size: 16px;
+      line-height: 1.6;
     }
 
     #canvas {
+      width: 100%;
+      max-width: 500px;
+      margin-top: 15px;
+      border-radius: 10px;
       display: none;
     }
 
@@ -58,7 +63,7 @@
 
 <body>
 
-  <h1>📷 QR Scanner</h1>
+  <h1>QR Diagnostic Test</h1>
 
   <video
     id="camera"
@@ -69,7 +74,7 @@
   <canvas id="canvas"></canvas>
 
   <div id="status">
-    Starting camera...
+    Starting...
   </div>
 
 
@@ -81,7 +86,7 @@
     const canvas =
       document.getElementById("canvas");
 
-    const context =
+    const ctx =
       canvas.getContext("2d", {
         willReadFrequently: true
       });
@@ -92,11 +97,30 @@
 
     let scanning = false;
 
-    let lastResult = "";
+
+    // ==========================================
+    // CHECK jsQR
+    // ==========================================
+
+    if (typeof jsQR === "undefined") {
+
+      status.innerHTML =
+        "❌ jsQR library did NOT load.<br><br>" +
+        "The QR library is not available.";
+
+    } else {
+
+      status.innerHTML =
+        "✅ jsQR library loaded.<br>" +
+        "⏳ Starting camera...";
+
+      startCamera();
+
+    }
 
 
     // ==========================================
-    // START CAMERA
+    // CAMERA
     // ==========================================
 
     async function startCamera() {
@@ -128,18 +152,30 @@
 
         video.srcObject = stream;
 
+
+        await video.play();
+
+
         scanning = true;
 
+
         status.innerHTML =
-          "📷 Camera ready<br>Point at a QR code";
+          "✅ jsQR library loaded<br>" +
+          "✅ Camera working<br>" +
+          "📐 Video size: " +
+          video.videoWidth +
+          " × " +
+          video.videoHeight +
+          "<br><br>" +
+          "🔍 Searching for QR...";
 
-        requestAnimationFrame(scanQR);
 
+        requestAnimationFrame(scan);
 
       } catch (error) {
 
         status.innerHTML =
-          "❌ Camera Error:<br><br>" +
+          "❌ CAMERA ERROR<br><br>" +
           error.name +
           "<br>" +
           error.message;
@@ -150,24 +186,30 @@
 
 
     // ==========================================
-    // READ QR
+    // QR SCAN
     // ==========================================
 
-    function scanQR() {
+    function scan() {
 
       if (!scanning) {
         return;
       }
 
 
-      if (video.readyState === video.HAVE_ENOUGH_DATA) {
+      if (
+        video.readyState >= 2 &&
+        video.videoWidth > 0 &&
+        video.videoHeight > 0
+      ) {
 
-        canvas.width = video.videoWidth;
+        canvas.width =
+          video.videoWidth;
 
-        canvas.height = video.videoHeight;
+        canvas.height =
+          video.videoHeight;
 
 
-        context.drawImage(
+        ctx.drawImage(
           video,
           0,
           0,
@@ -176,8 +218,8 @@
         );
 
 
-        const imageData =
-          context.getImageData(
+        const image =
+          ctx.getImageData(
             0,
             0,
             canvas.width,
@@ -187,42 +229,35 @@
 
         const code =
           jsQR(
-            imageData.data,
-            imageData.width,
-            imageData.height,
+            image.data,
+            image.width,
+            image.height,
             {
-              inversionAttempts: "attemptBoth"
+              inversionAttempts:
+                "attemptBoth"
             }
           );
 
 
         if (code) {
 
-          const result =
-            code.data.trim();
+          status.innerHTML =
+            "🎯 QR DETECTED!<br><br>" +
+            "CONTENT:<br>" +
+            code.data;
 
+          scanning = false;
 
-          if (result !== lastResult) {
+          stopCamera();
 
-            lastResult = result;
-
-            status.innerHTML =
-              "✅ QR FOUND<br><br>" +
-              result;
-
-            scanning = false;
-
-            stopCamera();
-
-            return;
-          }
+          return;
 
         }
 
       }
 
 
-      requestAnimationFrame(scanQR);
+      requestAnimationFrame(scan);
 
     }
 
@@ -233,30 +268,19 @@
 
     function stopCamera() {
 
-      const stream =
-        video.srcObject;
+      if (!video.srcObject) {
+        return;
+      }
 
-      if (stream) {
-
-        const tracks =
-          stream.getTracks();
-
-        tracks.forEach(function(track) {
+      video.srcObject
+        .getTracks()
+        .forEach(function(track) {
 
           track.stop();
 
         });
 
-      }
-
     }
-
-
-    // ==========================================
-    // START
-    // ==========================================
-
-    startCamera();
 
   </script>
 

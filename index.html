@@ -9,7 +9,9 @@
     name="viewport"
     content="width=device-width, initial-scale=1.0">
 
-  <title>Camera Test</title>
+  <title>QR Scanner Test</title>
+
+  <script src="https://unpkg.com/html5-qrcode"></script>
 
   <style>
 
@@ -29,29 +31,22 @@
       margin-bottom: 20px;
     }
 
-    #camera {
+    #reader {
       width: 100%;
       max-width: 500px;
+      margin: auto;
+      background: white;
       border-radius: 15px;
-      background: black;
+      overflow: hidden;
     }
 
-    button {
-      margin-top: 20px;
-      padding: 15px 30px;
-      font-size: 18px;
-      border: none;
-      border-radius: 10px;
-      background: #222;
-      color: white;
-    }
-
-    #status {
+    #result {
       margin-top: 20px;
       padding: 15px;
       background: white;
       border-radius: 10px;
-      font-size: 16px;
+      font-size: 18px;
+      word-break: break-all;
     }
 
   </style>
@@ -61,77 +56,92 @@
 
 <body>
 
-  <h1>📷 Camera Test</h1>
+  <h1>📷 QR Scanner Test</h1>
 
-  <video
-    id="camera"
-    autoplay
-    playsinline>
-  </video>
+  <div id="reader"></div>
 
-  <br>
-
-  <button onclick="startCamera()">
-    Start Camera
-  </button>
-
-  <div id="status">
-    Camera is not started
+  <div id="result">
+    Waiting for QR...
   </div>
 
 
   <script>
 
-    const video =
-      document.getElementById("camera");
+    let scanner = null;
 
-    const status =
-      document.getElementById("status");
+    let scanLocked = false;
 
 
-    async function startCamera() {
+    function startScanner() {
 
-      status.innerHTML =
-        "⏳ Requesting camera permission...";
+      scanner = new Html5Qrcode("reader");
 
 
-      try {
+      const config = {
 
-        const stream =
-          await navigator.mediaDevices.getUserMedia({
+        fps: 10,
 
-            video: {
-              facingMode: {
-                ideal: "environment"
-              }
-            },
+        qrbox: {
+          width: 250,
+          height: 250
+        },
 
-            audio: false
+        aspectRatio: 1.0
+
+      };
+
+
+      scanner.start(
+
+        {
+          facingMode: "environment"
+        },
+
+        config,
+
+        function(decodedText) {
+
+          // منع قراءة نفس QR عدة مرات متتالية
+          if (scanLocked) {
+            return;
+          }
+
+          scanLocked = true;
+
+
+          document.getElementById("result").innerHTML =
+            "✅ QR FOUND:<br><br>" +
+            decodedText;
+
+
+          // إيقاف المسح بعد القراءة
+          scanner.stop().catch(function(error) {
+
+            console.log(error);
 
           });
 
+        },
 
-        video.srcObject = stream;
+        function(errorMessage) {
 
+          // تجاهل أخطاء البحث العادية
+          // لأن المكتبة بتبعثها أثناء محاولة القراءة
 
-        status.innerHTML =
-          "✅ Camera is working!";
+        }
 
+      ).catch(function(error) {
 
-      } catch (error) {
+        document.getElementById("result").innerHTML =
+          "❌ Scanner Error:<br><br>" +
+          error;
 
-        console.error(error);
-
-
-        status.innerHTML =
-          "❌ Camera Error:<br><br>" +
-          error.name +
-          "<br>" +
-          error.message;
-
-      }
+      });
 
     }
+
+
+    startScanner();
 
   </script>
 

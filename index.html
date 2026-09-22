@@ -11,7 +11,7 @@
 
   <title>QR Attendance</title>
 
-  <script src="https://unpkg.com/@zxing/browser@0.1.5/umd/zxing-browser.min.js"></script>
+  <script src="https://unpkg.com/html5-qrcode"></script>
 
   <style>
 
@@ -40,11 +40,6 @@
       overflow: hidden;
     }
 
-    video {
-      width: 100%;
-      display: block;
-    }
-
     #status {
       max-width: 500px;
       margin: 20px auto;
@@ -53,15 +48,6 @@
       border-radius: 10px;
       font-size: 18px;
       line-height: 1.5;
-    }
-
-    button {
-      margin-top: 15px;
-      padding: 15px 25px;
-      font-size: 18px;
-      border: none;
-      border-radius: 10px;
-      cursor: pointer;
     }
 
   </style>
@@ -73,111 +59,76 @@
 
   <h1>QR Attendance</h1>
 
-  <div id="reader">
-
-    <video
-      id="video"
-      autoplay
-      playsinline>
-    </video>
-
-  </div>
+  <div id="reader"></div>
 
   <div id="status">
-    ⏳ Starting...
+    ⏳ Preparing scanner...
   </div>
-
-  <button onclick="startScanner()">
-    Start Camera
-  </button>
 
 
   <script>
 
-    const video =
-      document.getElementById("video");
-
     const status =
       document.getElementById("status");
 
+    let scanner = null;
 
-    let controls = null;
-
-    let scanning = false;
-
-
-    // ==========================================
-    // CHECK ZXING
-    // ==========================================
-
-    if (
-      typeof ZXingBrowser === "undefined"
-    ) {
-
-      status.innerHTML =
-        "❌ ZXing library did not load.";
-
-    } else {
-
-      status.innerHTML =
-        "✅ ZXing library loaded.<br>" +
-        "Click Start Camera.";
-
-    }
+    let scanLocked = false;
 
 
     // ==========================================
-    // START SCANNER
+    // START
     // ==========================================
 
     async function startScanner() {
 
-      if (scanning) {
-        return;
-      }
-
-      scanning = true;
-
       status.innerHTML =
-        "⏳ Starting camera...";
+        "⏳ Requesting camera permission...";
+
+
+      scanner =
+        new Html5Qrcode("reader");
 
 
       try {
 
-        const reader =
-          new ZXingBrowser.BrowserMultiFormatReader();
+        // ======================================
+        // GET CAMERAS
+        // ======================================
+
+        const cameras =
+          await Html5Qrcode.getCameras();
 
 
-        const devices =
-          await ZXingBrowser.BrowserCodeReader
-            .listVideoInputDevices();
-
-
-        if (!devices || devices.length === 0) {
+        if (
+          !cameras ||
+          cameras.length === 0
+        ) {
 
           throw new Error(
-            "No camera found"
+            "No camera found."
           );
 
         }
 
 
         // ======================================
-        // TRY TO FIND REAR CAMERA
+        // FIND REAR CAMERA
         // ======================================
 
-        let selectedDevice =
-          devices[devices.length - 1];
+        let cameraId =
+          cameras[cameras.length - 1].id;
 
 
         for (
           let i = 0;
-          i < devices.length;
+          i < cameras.length;
           i++
         ) {
 
           const label =
-            devices[i].label.toLowerCase();
+            cameras[i].label.toLowerCase();
+
 
           if (
             label.includes("back") ||
@@ -185,8 +136,8 @@
             label.includes("environment")
           ) {
 
-            selectedDevice =
-              devices[i];
+            cameraId =
+              cameras[i].id;
 
             break;
 
@@ -196,91 +147,180 @@
 
 
         status.innerHTML =
-          "📷 Camera found.<br>" +
+          "📷 Camera connected.<br>" +
           "🔍 Searching for QR...";
 
 
         // ======================================
-        // START CONTINUOUS SCANNING
+        // START SCANNER
         // ======================================
 
-        controls =
-          await reader.decodeFromVideoDevice(
-            selectedDevice.deviceId,
-            video,
-            function(result, error) {
+        await scanner.start(
 
-              if (result) {
+          cameraId,
 
-                scanning = false;
+          {
+            fps: 10,
 
-                status.innerHTML =
-                  "🎯 QR DETECTED!<br><br>" +
-                  "<strong>CONTENT:</strong><br>" +
-                  result.getText();
+            qrbox: {
+              width: 280,
+              height: 280
+            },
+
+            aspectRatio: 1.7777778
+
+          },
 
 
-                if (controls) {
+          // ====================================
+          // SUCCESS
+          // ====================================
 
-                  controls.stop();
+          async function(decodedText) {
 
+            if (scanLocked) {
+              return;
+            }
+
+
+            scanLocked = true;
+
+
+            status.innerHTML =
+              "🎯 QR DETECTED!<br><br>" +
+              "<strong>CONTENT:</strong><br>" +
+              decodedText;
+
+
+            try {
+
+              await scanner.stop();
+
+            } catch (e) {
+
+              console.log(e);
+
+            }
+
+          },
+
+
+          // ====================================
+          // SCAN ERROR
+          // ====================================
+
+          function(errorMessage) {
+
+            // Ignore normal scan errors.
+
+          }
+
+        );
+
+
+        // ======================================
+        // IMPORTANT iOS RESET
+        // ======================================
+
+        setTimeout(
+          async function() {
+
+            try {
+
+              const capabilities =
+                scanner.getRunningTrackCapabilities();
+
+
+              const constraints = {
+
+                width: {
+                  ideal: 1000
+                },
+
+                frameRate: {
+                  ideal:
+                    capabilities.frameRate &&
+                    capabilities.frameRate.max
+                      ? capabilities.frameRate.max
+                      : 30
                 }
 
-                return;
+              };
+
+
+              if (
+                capabilities.zoom
+              ) {
+
+                constraints.advanced = [
+
+                  {
+                    zoom:
+                      Math.min(
+                        2,
+                        capabilities.zoom
+                      )
+                  }
+
+                ];
 
               }
 
+
+              await scanner.applyVideoConstraints(
+                constraints
+              );
+
+
+              status.innerHTML =
+                "📷 Camera ready.<br>" +
+                "🔍 Searching for QR...";
+
+            } catch (error) {
+
+              console.log(
+                "Constraint reset:",
+                error
+              );
+
+              status.innerHTML =
+                "📷 Camera working.<br>" +
+                "🔍 Searching for QR...";
+
             }
-          );
+
+          },
+
+          1500
+
+        );
 
 
       } catch (error) {
 
-        scanning = false;
-
         status.innerHTML =
           "❌ CAMERA ERROR<br><br>" +
-          error.name +
-          "<br>" +
           error.message;
 
+        console.log(error);
+
       }
 
     }
 
 
     // ==========================================
-    // STOP
+    // AUTO START
     // ==========================================
 
-    function stopScanner() {
+    window.addEventListener(
+      "load",
+      function() {
 
-      scanning = false;
-
-      if (controls) {
-
-        controls.stop();
-
-        controls = null;
+        startScanner();
 
       }
-
-      if (video.srcObject) {
-
-        video.srcObject
-          .getTracks()
-          .forEach(function(track) {
-
-            track.stop();
-
-          });
-
-      }
-
-      status.innerHTML =
-        "⏹ Scanner stopped.";
-
-    }
+    );
 
   </script>
 

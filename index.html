@@ -9,9 +9,9 @@
     name="viewport"
     content="width=device-width, initial-scale=1.0">
 
-  <title>QR Scanner Test</title>
+  <title>QR Attendance</title>
 
-  <script src="https://unpkg.com/html5-qrcode"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
 
   <style>
 
@@ -28,25 +28,27 @@
     }
 
     h1 {
-      margin-bottom: 20px;
+      margin-bottom: 15px;
     }
 
-    #reader {
+    #camera {
       width: 100%;
       max-width: 500px;
-      margin: auto;
-      background: white;
       border-radius: 15px;
-      overflow: hidden;
+      background: black;
     }
 
-    #result {
+    #status {
       margin-top: 20px;
       padding: 15px;
       background: white;
       border-radius: 10px;
       font-size: 18px;
-      word-break: break-all;
+      word-break: break-word;
+    }
+
+    #canvas {
+      display: none;
     }
 
   </style>
@@ -56,92 +58,205 @@
 
 <body>
 
-  <h1>📷 QR Scanner Test</h1>
+  <h1>📷 QR Scanner</h1>
 
-  <div id="reader"></div>
+  <video
+    id="camera"
+    autoplay
+    playsinline>
+  </video>
 
-  <div id="result">
-    Waiting for QR...
+  <canvas id="canvas"></canvas>
+
+  <div id="status">
+    Starting camera...
   </div>
 
 
   <script>
 
-    let scanner = null;
+    const video =
+      document.getElementById("camera");
 
-    let scanLocked = false;
+    const canvas =
+      document.getElementById("canvas");
 
+    const context =
+      canvas.getContext("2d", {
+        willReadFrequently: true
+      });
 
-    function startScanner() {
-
-      scanner = new Html5Qrcode("reader");
-
-
-      const config = {
-
-        fps: 10,
-
-        qrbox: {
-          width: 250,
-          height: 250
-        },
-
-        aspectRatio: 1.0
-
-      };
+    const status =
+      document.getElementById("status");
 
 
-      scanner.start(
+    let scanning = false;
 
-        {
-          facingMode: "environment"
-        },
-
-        config,
-
-        function(decodedText) {
-
-          // منع قراءة نفس QR عدة مرات متتالية
-          if (scanLocked) {
-            return;
-          }
-
-          scanLocked = true;
+    let lastResult = "";
 
 
-          document.getElementById("result").innerHTML =
-            "✅ QR FOUND:<br><br>" +
-            decodedText;
+    // ==========================================
+    // START CAMERA
+    // ==========================================
 
+    async function startCamera() {
 
-          // إيقاف المسح بعد القراءة
-          scanner.stop().catch(function(error) {
+      try {
 
-            console.log(error);
+        const stream =
+          await navigator.mediaDevices.getUserMedia({
+
+            video: {
+              facingMode: {
+                ideal: "environment"
+              },
+
+              width: {
+                ideal: 1280
+              },
+
+              height: {
+                ideal: 720
+              }
+
+            },
+
+            audio: false
 
           });
 
-        },
 
-        function(errorMessage) {
+        video.srcObject = stream;
 
-          // تجاهل أخطاء البحث العادية
-          // لأن المكتبة بتبعثها أثناء محاولة القراءة
+        scanning = true;
 
-        }
+        status.innerHTML =
+          "📷 Camera ready<br>Point at a QR code";
 
-      ).catch(function(error) {
+        requestAnimationFrame(scanQR);
 
-        document.getElementById("result").innerHTML =
-          "❌ Scanner Error:<br><br>" +
-          error;
 
-      });
+      } catch (error) {
+
+        status.innerHTML =
+          "❌ Camera Error:<br><br>" +
+          error.name +
+          "<br>" +
+          error.message;
+
+      }
 
     }
 
 
-    startScanner();
+    // ==========================================
+    // READ QR
+    // ==========================================
+
+    function scanQR() {
+
+      if (!scanning) {
+        return;
+      }
+
+
+      if (video.readyState === video.HAVE_ENOUGH_DATA) {
+
+        canvas.width = video.videoWidth;
+
+        canvas.height = video.videoHeight;
+
+
+        context.drawImage(
+          video,
+          0,
+          0,
+          canvas.width,
+          canvas.height
+        );
+
+
+        const imageData =
+          context.getImageData(
+            0,
+            0,
+            canvas.width,
+            canvas.height
+          );
+
+
+        const code =
+          jsQR(
+            imageData.data,
+            imageData.width,
+            imageData.height,
+            {
+              inversionAttempts: "attemptBoth"
+            }
+          );
+
+
+        if (code) {
+
+          const result =
+            code.data.trim();
+
+
+          if (result !== lastResult) {
+
+            lastResult = result;
+
+            status.innerHTML =
+              "✅ QR FOUND<br><br>" +
+              result;
+
+            scanning = false;
+
+            stopCamera();
+
+            return;
+          }
+
+        }
+
+      }
+
+
+      requestAnimationFrame(scanQR);
+
+    }
+
+
+    // ==========================================
+    // STOP CAMERA
+    // ==========================================
+
+    function stopCamera() {
+
+      const stream =
+        video.srcObject;
+
+      if (stream) {
+
+        const tracks =
+          stream.getTracks();
+
+        tracks.forEach(function(track) {
+
+          track.stop();
+
+        });
+
+      }
+
+    }
+
+
+    // ==========================================
+    // START
+    // ==========================================
+
+    startCamera();
 
   </script>
 
